@@ -1,6 +1,6 @@
 import csv
 import pandas as pd
-from flask import (Flask, redirect, render_template, request,jsonify,
+from flask import (Flask, redirect, render_template, request, jsonify, Response,
                    send_from_directory, url_for)
 
 app = Flask(__name__)
@@ -123,30 +123,40 @@ def popular_words11():
 
     # Create response JSON
     response_data = [{'term': term, 'popularity': int(popularity)} for term, popularity in sorted_words[:limit]]
-
+    print("---------------------------------")
+    print(response_data)
+    print("---------------------------------")
     return jsonify(response_data)
 
 
 @app.route('/substitute_words', methods=['POST'])
 def substitute_words():
-    # Get JSON data from the request
     data = request.get_json()
+    print("---------------------------------")
+    print(request.content_type)
+    print("---------------------------------")
+    data = request.get_json()
+    original_word = data['word']
+    substitute_word = data['substitute']
 
-    # Extract word and substitute from the JSON data
-    word = data.get('word')
-    substitute = data.get('substitute')
-
-    if not word or not substitute:
-        return jsonify({"error": "Word and substitute must be provided"}), 400
-
-    # Perform word substitution in the 'reviews' column of amazon_reviews_data
-    affected_reviews = reviews_data['review'].str.count(word, case=False).sum()
-    reviews_data['review'] = reviews_data['review'].str.replace(word, substitute, case=False)
-
-    # Return the number of affected reviews in the response
-    response_data = {"affected_reviews": affected_reviews}
+    # 计算受影响的评论数量并替换单词
+    affected_reviews = 0
+    for i, review in reviews_data['review'].items():
+        if original_word in review:
+            new_review = review.replace(original_word, substitute_word)
+            reviews_data.at[i, 'review'] = new_review
+            affected_reviews += 1
+    response_data = {"affected_reviews": affected_reviews,
+        "message": "Word substitution successful."}
+    # # 返回 JSON 响应
+    # return jsonify(response_data)
+    print("---------------------------------")
+    print(response_data)
+    print("---------------------------------")
+    response = Response(response=jsonify(response_data).data, status=200, content_type='application/json')
+    print(response.content_type)
     return jsonify(response_data)
 
 
 if __name__ == '__main__':
-   app.run()
+   app.run(debug=True)

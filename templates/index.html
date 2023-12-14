@@ -18,14 +18,74 @@
         }
     </style>
     <script>
-        function showCityDetails(cityId) {
-            var detailsElement = document.getElementById('details-' + cityId);
-            detailsElement.style.display = 'block';
-        }
+        {#function showCityDetails(cityId) {#}
+        {#    var detailsElement = document.getElementById('details-' + cityId);#}
+        {#    detailsElement.style.display = 'block';#}
 
-        function hideCityDetails(cityId) {
-            var detailsElement = document.getElementById('details-' + cityId);
-            detailsElement.style.display = 'none';
+
+        {#function hideCityDetails(cityId) {#}
+        {#    var detailsElement = document.getElementById('details-' + cityId);#}
+        {#    detailsElement.style.display = 'none';#}
+
+        {#function submitData() {#}
+        {#    var formData = {#}
+        {#        word: document.getElementById('word').value,#}
+        {#        substitute: document.getElementById('substitute').value#}
+        {#    };#}
+        {##}
+        {#    fetch('{{ url_for("substitute_words") }}', {#}
+        {#        method: 'POST',#}
+        {#        headers: {#}
+        {#            'Content-Type': 'application/json',#}
+        {#        },#}
+        {#        body: JSON.stringify(formData),#}
+        {#    })#}
+        {#    .then(response => response.json())#}
+        {#    .then(data => console.log(data))#}
+        {#    .catch(error => console.error('Error:', error));#}
+        {#function submitData() {#}
+        {#    event.preventDefault();#}
+        {#    var formData = {#}
+        {#        word: document.getElementById('word').value,#}
+        {#        substitute: document.getElementById('substitute').value#}
+        {#    };#}
+        {##}
+        {#    fetch('{{ url_for("substitute_words") }}', {#}
+        {#        method: 'POST',#}
+        {#        headers: {#}
+        {#            'Content-Type': 'application/json',#}
+        {#        },#}
+        {#        body: JSON.stringify(formData),#}
+        {#    })#}
+        {#    .then(response => response.json())#}
+        {#    .then(data => console.log(data))#}
+        {#    .catch(error => console.error('Error:', error));#}
+
+        function substituteWords() {
+            const originalWord = document.getElementById('originalWord').value;
+            const substituteWord = document.getElementById('substituteWord').value;
+
+            const data = {
+                word: originalWord,
+                substitute: substituteWord
+            };
+
+            fetch('/substitute_words', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultElement = document.getElementById('data');
+                resultElement.innerHTML = `Affected Reviews: ${data.affected_reviews}`;
+                // 在此处处理受影响评论的数量，可以更新页面或执行其他逻辑
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         }
     </script>
 </head>
@@ -62,6 +122,23 @@
             <input type="submit" value="Get Question11 Popular Words">
         </form>
 
+        <form action="{{ url_for('substitute_words') }}" method="post">
+{#            <input type="text" id="word" name="word" placeholder="Enter text">#}
+{#            <input type="text" id="substitute" name="substitute" placeholder="Enter text">#}
+{#            <button onclick="submitData()">Submit</button>#}
+        <div>
+            <label for="originalWord">Original Word:</label>
+            <input type="text" id="originalWord" placeholder="Enter original word">
+        </div>
+
+        <div>
+            <label for="substituteWord">Substitute Word:</label>
+            <input type="text" id="substituteWord" placeholder="Enter substitute word">
+        </div>
+
+        <button type="button" onclick="substituteWords()">Substitute</button>
+        </form>
+        <div id="data"></div>
     </body>
 </html>
 
