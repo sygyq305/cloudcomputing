@@ -1,6 +1,6 @@
-import os
+import csv
 import pandas as pd
-from flask import (Flask, redirect, render_template, request,
+from flask import (Flask, redirect, render_template, request,jsonify,
                    send_from_directory, url_for)
 
 app = Flask(__name__)
@@ -28,21 +28,124 @@ def city_details(city):
     return render_template('city_details.html', city_details=city_details[0])
 
 
-# @app.route('/favicon.ico')
-# def favicon():
-#     return send_from_directory(os.path.join(app.root_path, 'static'),
-#                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
-#
-# @app.route('/hello', methods=['POST'])
-# def hello():
-#    name = request.form.get('name')
-#
-#    if name:
-#        print('Request for hello page received with name=%s' % name)
-#        return render_template('hello.html', name = name)
-#    else:
-#        print('Request for hello page received with no name or blank name -- redirecting')
-#        return redirect(url_for('index'))
+def fetch_data(city_name = None, include_header = False, exact_match = False):
+    with open("'amazon-reviews.csv'") as csvfile:
+        csvreader = csv.reader(csvfile, delimiter=',')
+        row_id = -1
+        wanted_data = []
+        for row in csvreader:
+            row_id += 1
+            if row_id == 0 and not include_header:
+                continue
+            line = []
+            col_id = -1
+            is_wanted_row = False
+            if city_name is None:
+                is_wanted_row = True
+            for raw_col in row:
+                col_id += 1
+                col = raw_col.replace('"', '')
+                line.append( col )
+                if col_id == 0 and city_name is not None:
+                    if not exact_match and city_name.lower() in col.lower():
+                        is_wanted_row = True
+                    elif exact_match and city_name.lower() == col.lower():
+                        is_wanted_row = True
+            if is_wanted_row:
+                if row_id > 0:
+                    line.insert(0, "{}".format(row_id))
+                else:
+                    line.insert(0, "")
+                wanted_data.append(line)
+    return wanted_data
+@app.route('/popular_words10', methods=['GET'])
+def popular_words():
+    # Get query parameters
+    city_name = request.args.get('city', None)
+    limit = int(request.args.get('limit', 10))
+
+    # Filter data based on city_name if provided
+    if city_name:
+        filtered_data = reviews_data[reviews_data['city'] == city_name]
+    else:
+        filtered_data = reviews_data
+
+    # Count word occurrences in reviews
+    word_count = {}
+    for review in filtered_data['review']:
+        words = review.lower().split()
+        unique_words = set(words)  # Ensure each word is counted only once per review
+        for word in unique_words:
+            if word.isalpha():  # Exclude non-alphabetic characters
+                word_count[word] = word_count.get(word, 0) + 1
+
+    # Sort words by popularity in descending order
+    sorted_words = sorted(word_count.items(), key=lambda x: x[1], reverse=True)
+
+    # Create response JSON
+    response_data = [{'term': term, 'popularity_Q10': popularity} for term, popularity in sorted_words[:limit]]
+
+    return jsonify(response_data)
+
+
+@app.route('/popular_words11', methods=['GET'])
+def popular_words11():
+    # Get query parameters
+    city_name = request.args.get('city', None)
+    limit = int(request.args.get('limit', 10))
+
+    # Filter data based on city_name if provided
+    if city_name:
+        filtered_data = reviews_data[reviews_data['city'] == city_name]
+    else:
+        filtered_data = reviews_data
+
+    # Count word occurrences and track the city populations
+    word_count = {}
+    city_populations = {}
+    for _, row in filtered_data.iterrows():
+        words = row['review'].lower().split()
+        unique_words = set(words)  # Ensure each word is counted only once per review
+        for word in unique_words:
+            if word.isalpha():  # Exclude non-alphabetic characters
+                word_count[word] = word_count.get(word, 0) + 1
+                city_populations[word] = city_populations.get(word, {})
+                city_populations[word][row['city']] = cities_data.loc[cities_data['city'] == row['city'], 'population'].values[0]
+
+    # Calculate word popularity based on the sum of city populations
+    popularity_data = {}
+    for word, populations in city_populations.items():
+        population_sum = sum(populations.values())
+        popularity_data[word] = population_sum
+
+    # Sort words by popularity in descending order
+    sorted_words = sorted(popularity_data.items(), key=lambda x: x[1], reverse=True)
+
+    # Create response JSON
+    response_data = [{'term': term, 'popularity': int(popularity)} for term, popularity in sorted_words[:limit]]
+
+    return jsonify(response_data)
+
+
+@app.route('/substitute_words', methods=['POST'])
+def substitute_words():
+    # Get JSON data from the request
+    data = request.get_json()
+
+    # Extract word and substitute from the JSON data
+    word = data.get('word')
+    substitute = data.get('substitute')
+
+    if not word or not substitute:
+        return jsonify({"error": "Word and substitute must be provided"}), 400
+
+    # Perform word substitution in the 'reviews' column of amazon_reviews_data
+    affected_reviews = reviews_data['review'].str.count(word, case=False).sum()
+    reviews_data['review'] = reviews_data['review'].str.replace(word, substitute, case=False)
+
+    # Return the number of affected reviews in the response
+    response_data = {"affected_reviews": affected_reviews}
+    return jsonify(response_data)
 
 
 if __name__ == '__main__':

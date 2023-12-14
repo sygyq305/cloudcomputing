@@ -41,29 +41,27 @@
      </main>
    </body>
     <body>
+        <form action="{{ url_for('popular_words') }}" method="get">
+            <label for="city">City:</label>
+            <input type="text" id="city" name="city" >
+            <br>
+            <label for="limit">Limit:</label>
+            <input type="number" id="limit" name="limit" >
+            <br>
+            <input type="submit" value="Get Question10 Popular Words">
+        </form>
 
-        <div class="reviews">
-            <h2>Amazon Reviews</h2>
-            <table>
-                <tr>
-                    <th>title</th>
-                    <th>review</th>
-                    <th>city</th>
-{#                    <th>score</th>#}
-                    <th>Score Image</th>
-                </tr>
-                {% for review in reviews %}
-                <tr>
-                    <td>{{ review.title }}</td>
-                    <td>{{ review.review }}</td>
-                    <td><a href="{{ url_for('city_details', city=review['city']) }}" target="_blank">{{ review['city'] }}</a></td>
-{#                    <td>{{ review.score }}</td>#}
-                    <td><img src="{{ url_for('static', filename='images/' + score_path[review['score']] + '.jpg') }}" alt="Score Image" style="width: 60px; height: auto; margin-right: 10px;"></td>
-{#                    <td><img src="{{ url_for('static', filename='images/score-' + score_string + '.jpg') }}" alt="Score Image"></td>#}
-                </tr>
-                {% endfor %}
-            </table>
-        </div>
+
+        <form action="{{ url_for('popular_words11') }}" method="get">
+            <label for="city">City:</label>
+            <input type="text" id="city" name="city" >
+            <br>
+            <label for="limit">Limit:</label>
+            <input type="number" id="limit" name="limit" >
+            <br>
+            <input type="submit" value="Get Question11 Popular Words">
+        </form>
+
     </body>
 </html>
 
