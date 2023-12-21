@@ -2,3 +2,6 @@ Flask
 gunicorn
 pandas
 werkzeug
+redis>=5.0
+azure-core>=1.29.0
+azure-cosmos>=4.5.0
