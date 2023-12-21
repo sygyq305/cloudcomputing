@@ -18,127 +18,30 @@
         }
     </style>
     <script>
-        {#function showCityDetails(cityId) {#}
-        {#    var detailsElement = document.getElementById('details-' + cityId);#}
-        {#    detailsElement.style.display = 'block';#}
 
-
-        {#function hideCityDetails(cityId) {#}
-        {#    var detailsElement = document.getElementById('details-' + cityId);#}
-        {#    detailsElement.style.display = 'none';#}
-
-        {#function submitData() {#}
-        {#    var formData = {#}
-        {#        word: document.getElementById('word').value,#}
-        {#        substitute: document.getElementById('substitute').value#}
-        {#    };#}
-        {##}
-        {#    fetch('{{ url_for("substitute_words") }}', {#}
-        {#        method: 'POST',#}
-        {#        headers: {#}
-        {#            'Content-Type': 'application/json',#}
-        {#        },#}
-        {#        body: JSON.stringify(formData),#}
-        {#    })#}
-        {#    .then(response => response.json())#}
-        {#    .then(data => console.log(data))#}
-        {#    .catch(error => console.error('Error:', error));#}
-        {#function submitData() {#}
-        {#    event.preventDefault();#}
-        {#    var formData = {#}
-        {#        word: document.getElementById('word').value,#}
-        {#        substitute: document.getElementById('substitute').value#}
-        {#    };#}
-        {##}
-        {#    fetch('{{ url_for("substitute_words") }}', {#}
-        {#        method: 'POST',#}
-        {#        headers: {#}
-        {#            'Content-Type': 'application/json',#}
-        {#        },#}
-        {#        body: JSON.stringify(formData),#}
-        {#    })#}
-        {#    .then(response => response.json())#}
-        {#    .then(data => console.log(data))#}
-        {#    .catch(error => console.error('Error:', error));#}
-
-        function substituteWords() {
-            const originalWord = document.getElementById('originalWord').value;
-            const substituteWord = document.getElementById('substituteWord').value;
-
-            const data = {
-                word: originalWord,
-                substitute: substituteWord
-            };
-
-            fetch('/substitute_words', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data),
-            })
-            .then(response => response.json())
-            .then(data => {
-                const resultElement = document.getElementById('data');
-                resultElement.innerHTML = `Affected Reviews: ${data.affected_reviews}`;
-                // 在此处处理受影响评论的数量，可以更新页面或执行其他逻辑
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
-        }
     </script>
 </head>
 <html>
    <body>
-     <main>
-        <div class="px-4 py-3 my-2 text-center">
-            <h1 class="display-6 fs-5">Name : Gao Yu qi</h1>
-            <h1 class="display-6 fs-5">Last 5 Digits of Student ID : 76602</h1>
-{#            <img class="d-block mx-auto mb-4" src="{{ url_for('static', filename='images/person.jpg') }}" alt="Azure Logo" width="192" height="192"/>#}
-            <!-- <img  src="/docs/5.1/assets/brand/bootstrap-logo.svg" alt="" width="72" height="57"> -->
-          </div>
-     </main>
-   </body>
-    <body>
-        <form action="{{ url_for('popular_words') }}" method="get">
+        <form action="/data/closest_cities" method="get">
             <label for="city">City:</label>
-            <input type="text" id="city" name="city" >
-            <br>
-            <label for="limit">Limit:</label>
-            <input type="number" id="limit" name="limit" >
-            <br>
-            <input type="submit" value="Get Question10 Popular Words">
+            <input type="text" id="city" name="city"><br>
+
+            <label for="page">Page:</label>
+            <input type="text" id="page" name="page"><br>
+
+            <label for="page_size">Page Size:</label>
+            <input type="text" id="page_size" name="page_size"><br>
+
+            <input type="submit" value="Submit">
         </form>
-
-
-        <form action="{{ url_for('popular_words11') }}" method="get">
-            <label for="city">City:</label>
-            <input type="text" id="city" name="city" >
-            <br>
-            <label for="limit">Limit:</label>
-            <input type="number" id="limit" name="limit" >
-            <br>
-            <input type="submit" value="Get Question11 Popular Words">
+        <h1>Cache Purge</h1>
+        {% if message %}
+            <p>{{ message }}</p>
+        {% endif %}
+        <form method="post" action="{{ url_for('handle_purge_cache') }}">
+            <button type="submit">Purge Cache</button>
         </form>
-
-        <form action="{{ url_for('substitute_words') }}" method="post">
-{#            <input type="text" id="word" name="word" placeholder="Enter text">#}
-{#            <input type="text" id="substitute" name="substitute" placeholder="Enter text">#}
-{#            <button onclick="submitData()">Submit</button>#}
-        <div>
-            <label for="originalWord">Original Word:</label>
-            <input type="text" id="originalWord" placeholder="Enter original word">
-        </div>
-
-        <div>
-            <label for="substituteWord">Substitute Word:</label>
-            <input type="text" id="substituteWord" placeholder="Enter substitute word">
-        </div>
-
-        <button type="button" onclick="substituteWords()">Substitute</button>
-        </form>
-        <div id="data"></div>
     </body>
 </html>
 

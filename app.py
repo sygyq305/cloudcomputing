@@ -1,162 +1,118 @@
-import csv
-import pandas as pd
-from flask import (Flask, redirect, render_template, request, jsonify, Response,
+import json
+from math import sqrt
+import time
+from flask import (Flask, redirect, render_template, request, jsonify,
                    send_from_directory, url_for)
+from azure.cosmos import CosmosClient
+import redis
+
+# password is the "Primary" copied in "Access keys"
+redis_passwd = "Bc1iRDDtiHjPDzGijIuzJ3Aidg2is3zHJAzCaM8NWPo="
+# "Host name" in properties
+redis_host = "sygyq.redis.cache.windows.net"
+# SSL Port
+redis_port = 6380
+
+cache = redis.StrictRedis(
+            host=redis_host, port=redis_port,
+            db=0, password=redis_passwd,
+            ssl=True,
+        )
+
+if cache.ping():
+    print("pong")
+
+
+# to delete all data in the cache
+def purge_cache():
+    for key in cache.keys():
+        cache.delete(key.decode())
+
 
 app = Flask(__name__)
-# 从 CSV 文件加载评论
-reviews_data = pd.read_csv('amazon-reviews.csv')
-cities_data = pd.read_csv('us-cities.csv')
+# 定义连接字符串和数据库信息
+connection_string = "AccountEndpoint=https://tutorial-uta-cse6332.documents.azure.com:443/;AccountKey=fSDt8pk5P1EH0NlvfiolgZF332ILOkKhMdLY6iMS2yjVqdpWx4XtnVgBoJBCBaHA8PIHnAbFY4N9ACDbMdwaEw==;"
+database_name = "tutorial"
+container_name_cities = "us_cities"
+container_name_reviews = "reviews"
+
+# 初始化Cosmos DB客户端
+client = CosmosClient.from_connection_string(connection_string)
+
+# 获取对数据库的引用
+database = client.get_database_client(database_name)
+
+# 获取对容器（表）的引用
+container_cities = database.get_container_client(container_name_cities)
+# container_reviews = database.get_container_client(container_name_reviews)
+
 
 @app.route('/')
-# def index():
-#    print('Request for index page received')
-#    return render_template('index.html')
-def show_reviews():
-    score_path = {1: 'score-1', 2: 'score-2', 3: 'score-3', 4: 'score-4', 5: 'score-5'}
-
-    return render_template('index.html', reviews=reviews_data.to_dict('records'), score_path=score_path)
+def index():
+    return render_template('index.html')
 
 
-@app.route('/city_details/<city>')
-def city_details(city):
-    # 获取城市详情数据
-    city_details = cities_data[cities_data['city'] == city].to_dict(orient='records')
-    if not city_details:
-        return 'City details not found'
+@app.route('/data/closest_cities', methods=['GET'])
+def closest_cities():
+    start_time = time.time()
+    city = request.args.get('city', '')
+    page = int(request.args.get('page', ''))
+    page_size = int(request.args.get('page_size', ''))
 
-    return render_template('city_details.html', city_details=city_details[0])
+    # Generate a unique key for caching
+    cache_key = f"closest_cities:{city}:{page}:{page_size}"
 
-
-def fetch_data(city_name = None, include_header = False, exact_match = False):
-    with open("'amazon-reviews.csv'") as csvfile:
-        csvreader = csv.reader(csvfile, delimiter=',')
-        row_id = -1
-        wanted_data = []
-        for row in csvreader:
-            row_id += 1
-            if row_id == 0 and not include_header:
-                continue
-            line = []
-            col_id = -1
-            is_wanted_row = False
-            if city_name is None:
-                is_wanted_row = True
-            for raw_col in row:
-                col_id += 1
-                col = raw_col.replace('"', '')
-                line.append( col )
-                if col_id == 0 and city_name is not None:
-                    if not exact_match and city_name.lower() in col.lower():
-                        is_wanted_row = True
-                    elif exact_match and city_name.lower() == col.lower():
-                        is_wanted_row = True
-            if is_wanted_row:
-                if row_id > 0:
-                    line.insert(0, "{}".format(row_id))
-                else:
-                    line.insert(0, "")
-                wanted_data.append(line)
-    return wanted_data
-@app.route('/popular_words10', methods=['GET'])
-def popular_words():
-    # Get query parameters
-    city_name = request.args.get('city', None)
-    limit = int(request.args.get('limit', 10))
-
-    # Filter data based on city_name if provided
-    if city_name:
-        filtered_data = reviews_data[reviews_data['city'] == city_name]
+    # Try to get cached data
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        # Data is in cache
+        current_page_records = json.loads(cached_data)
+        from_cache = True
     else:
-        filtered_data = reviews_data
+        query = "SELECT c.lat, c.lng FROM c WHERE c.city = @city"
+        params = [dict(name="@city", value=city)]
+        result1 = list(container_cities.query_items(
+            query=query,
+            parameters=params,
+            enable_cross_partition_query=True
+        ))
+        tmp = result1[0]
+        lat = float(tmp['lat'])
+        lng = float(tmp['lng'])
+        result = []
+        query = "SELECT * FROM c"
+        items = container_cities.query_items(query, enable_cross_partition_query=True)
+        for item in items:
+            citys = {}
+            citys['city'] = item['city']
+            citys['lat'] = item['lat']
+            citys['lng'] = item['lng']
+            citys['Eular distance'] = sqrt((float(item['lat']) - lat) ** 2 + (float(item['lng']) - lng) ** 2)
+            result.append(citys)
 
-    # Count word occurrences in reviews
-    word_count = {}
-    for review in filtered_data['review']:
-        words = review.lower().split()
-        unique_words = set(words)  # Ensure each word is counted only once per review
-        for word in unique_words:
-            if word.isalpha():  # Exclude non-alphabetic characters
-                word_count[word] = word_count.get(word, 0) + 1
+        sorted_result = sorted(result, key=lambda x: x['Eular distance'])
+        # 计算当前页的起始和结束索引
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
 
-    # Sort words by popularity in descending order
-    sorted_words = sorted(word_count.items(), key=lambda x: x[1], reverse=True)
-
-    # Create response JSON
-    response_data = [{'term': term, 'popularity_Q10': popularity} for term, popularity in sorted_words[:limit]]
-
-    return jsonify(response_data)
-
-
-@app.route('/popular_words11', methods=['GET'])
-def popular_words11():
-    # Get query parameters
-    city_name = request.args.get('city', None)
-    limit = int(request.args.get('limit', 10))
-
-    # Filter data based on city_name if provided
-    if city_name:
-        filtered_data = reviews_data[reviews_data['city'] == city_name]
-    else:
-        filtered_data = reviews_data
-
-    # Count word occurrences and track the city populations
-    word_count = {}
-    city_populations = {}
-    for _, row in filtered_data.iterrows():
-        words = row['review'].lower().split()
-        unique_words = set(words)  # Ensure each word is counted only once per review
-        for word in unique_words:
-            if word.isalpha():  # Exclude non-alphabetic characters
-                word_count[word] = word_count.get(word, 0) + 1
-                city_populations[word] = city_populations.get(word, {})
-                city_populations[word][row['city']] = cities_data.loc[cities_data['city'] == row['city'], 'population'].values[0]
-
-    # Calculate word popularity based on the sum of city populations
-    popularity_data = {}
-    for word, populations in city_populations.items():
-        population_sum = sum(populations.values())
-        popularity_data[word] = population_sum
-
-    # Sort words by popularity in descending order
-    sorted_words = sorted(popularity_data.items(), key=lambda x: x[1], reverse=True)
-
-    # Create response JSON
-    response_data = [{'term': term, 'popularity': int(popularity)} for term, popularity in sorted_words[:limit]]
-    print("---------------------------------")
-    print(response_data)
-    print("---------------------------------")
-    return jsonify(response_data)
+        # 提取当前页的记录
+        current_page_records = sorted_result[start_index:end_index]
+        # Cache the data
+        cache.setex(cache_key, 3600, json.dumps(current_page_records))  # 3600 seconds = 1 hour
+        from_cache = False
+    end_time = time.time()  # 记录程序结束运行的时间
+    elapsed_time = (end_time - start_time) * 1000  # 计算运行时间并转换为毫秒
+    current_page_records.append({'the time of computing the response': f'{elapsed_time:.3f}'+'ms'})
+    current_page_records.append({'the time of computing the response': f'{from_cache}'})
+    print(current_page_records)
+    return jsonify(current_page_records)
 
 
-@app.route('/substitute_words', methods=['POST'])
-def substitute_words():
-    data = request.get_json()
-    print("---------------------------------")
-    print(request.content_type)
-    print("---------------------------------")
-    data = request.get_json()
-    original_word = data['word']
-    substitute_word = data['substitute']
-
-    # 计算受影响的评论数量并替换单词
-    affected_reviews = 0
-    for i, review in reviews_data['review'].items():
-        if original_word in review:
-            new_review = review.replace(original_word, substitute_word)
-            reviews_data.at[i, 'review'] = new_review
-            affected_reviews += 1
-    response_data = {"affected_reviews": affected_reviews,
-        "message": "Word substitution successful."}
-    # # 返回 JSON 响应
-    # return jsonify(response_data)
-    print("---------------------------------")
-    print(response_data)
-    print("---------------------------------")
-    response = Response(response=jsonify(response_data).data, status=200, content_type='application/json')
-    print(response.content_type)
-    return jsonify(response_data)
+@app.route('/purge_cache', methods=['POST'])
+def handle_purge_cache():
+    purge_cache()
+    return render_template('index.html', message='Cache purged successfully!')
 
 
 if __name__ == '__main__':
-   app.run(debug=True)
+   app.run(debug=True, host="127.0.0.1", port=8080)
