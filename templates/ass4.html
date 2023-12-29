@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cluster Visualization</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            padding-top: 100px;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+        }
+
+        .close {
+            color: #aaaaaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<form id="clusterForm">
+    Classes: <input type="number" name="classes"><br>
+    K: <input type="number" name="k"><br>
+    Words: <input type="number" name="words"><br>
+    <input type="button" value="Submit" onclick="getClusterData()">
+</form>
+<canvas id="pieChart"></canvas>
+
+<div id="myModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <div id="description"></div>
+        <canvas id="radarChart"></canvas>
+    </div>
+</div>
+<div id="response-time"></div>
+<div id="redis"></div>
+<script>
+    function getClusterData() {
+        var form = document.getElementById('clusterForm');
+        var url = '/cluster?' + new URLSearchParams(new FormData(form)).toString();
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                // 调用函数来绘制饼图
+                drawPieChart(data);
+                {#document.getElementById('redis').textContent = 'Using Redis: ' + data.IsRedis;#}
+                {#document.getElementById('response-time').textContent = 'Response time: ' + data.response_time + ' ms';#}
+            });
+    }
+
+    function generateColors(length) {
+        const colors = [
+            'rgba(255, 99, 132, 0.6)',   // 红色
+            'rgba(54, 162, 235, 0.6)',   // 蓝色
+            'rgba(255, 206, 86, 0.6)',   // 黄色
+            'rgba(75, 192, 192, 0.6)',   // 青色
+            'rgba(153, 102, 255, 0.6)',  // 紫色
+            'rgba(255, 159, 64, 0.6)',   // 橙色
+            'rgba(231,233,237, 0.6)',    // 浅灰色
+            'rgba(75, 192, 75, 0.6)',    // 绿色
+            'rgba(255, 99, 255, 0.6)',   // 粉色
+            'rgba(99, 132, 255, 0.6)',   // 靛蓝色
+            'rgba(159, 159, 64, 0.6)',   // 橄榄色
+            'rgba(64, 159, 159, 0.6)',   // 青绿色
+            // ... 可以继续添加更多颜色
+        ];
+
+        const backgroundColors = [];
+        for (let i = 0; i < length; i++) {
+            backgroundColors.push(colors[i % colors.length]);
+        }
+
+        return backgroundColors;
+    }
+
+    function drawPieChart(data) {
+        var labels = Object.keys(data.clusters); // 获取类别名称
+        var cityCounts = labels.map(label => data.clusters[label].length); // 计算每个类别中城市的数量
+        var backgroundColors = generateColors(labels.length);
+        var ctx = document.getElementById('pieChart').getContext('2d');
+        var chart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Number of Cities in Each Cluster',
+                    data: cityCounts,
+                    backgroundColor: backgroundColors,
+                    borderColor: backgroundColors.map(color => color.replace('0.2', '1')), // 深一些的颜色用于边框
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                onClick: (evt, item) => {
+                    if (item.length > 0) {
+                        {#var descriptionElement = document.getElementById('description');#}
+                        var index = item[0].index;
+                        var selectedCluster = labels[index];
+                        var descriptionElement = document.getElementById('description');
+                        var modal = document.getElementById('myModal');
+                        var span = document.getElementsByClassName('close')[0];
+
+                        span.onclick = function () {
+                            modal.style.display = 'none';
+                        }
+
+                        window.onclick = function (event) {
+                            if (event.target == modal) {
+                                modal.style.display = 'none';
+                            }
+                        }
+
+                        var cityCounts = data.clusters[selectedCluster].length;
+                        var score = data.scores[selectedCluster]; // 确保 scores 是按照类别而非索引获取
+                        var city = data.centers[selectedCluster]; // 确保 centers 是按照类别而非索引获取
+                        var city_state = city.split('_');
+                        var message = `review score: ${score}\nnumber of cities: ${cityCounts}\ncenter city: ${city_state[0]}\nstate: ${city_state[1]}`;
+                        descriptionElement.innerText = message;
+
+
+                        // 提取关键词作为标签，提取每个关键词的计数
+                        var word_labels = Object.keys(data.words);
+                        var data_class = Object.values(data.words);
+                        var avgData = word_labels.map(word => data.avg_words[word]);
+
+                        modal.style.display = 'block';
+                        drawRadarChart(word_labels, data_class, avgData);
+
+                        {#alert(message);#}
+
+
+                    }
+                }
+            }
+        });
+    }
+
+    function drawRadarChart(labels, classValues, averageValues) {
+        var radarChartContext = document.getElementById('radarChart').getContext('2d');
+        if (window.radarChart && typeof window.radarChart.destroy === 'function') {
+            window.radarChart.destroy();
+        }
+        window.radarChart = new Chart(radarChartContext, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Class',
+                        data: classValues,
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)', // 半透明红色
+                        borderColor: 'rgba(255, 99, 132, 1)', // 红色
+                        pointBackgroundColor: 'rgba(255, 99, 132, 1)', // 点的背景颜色
+                        pointBorderColor: '#fff', // 点的边框颜色
+                        pointHoverBackgroundColor: '#fff', // 鼠标悬停时点的背景颜色
+                        pointHoverBorderColor: 'rgba(255, 99, 132, 1)' // 鼠标悬停时点的边框颜色
+                    },
+                    {
+                        label: 'Average',
+                        data: averageValues,
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)', // 半透明蓝色
+                        borderColor: 'rgba(54, 162, 235, 1)', // 蓝色
+                        pointBackgroundColor: 'rgba(54, 162, 235, 1)', // 点的背景颜色
+                        pointBorderColor: '#fff', // 点的边框颜色
+                        pointHoverBackgroundColor: '#fff', // 鼠标悬停时点的背景颜色
+                        pointHoverBorderColor: 'rgba(54, 162, 235, 1)' // 鼠标悬停时点的边框颜色
+                    }
+                ]
+            },
+            options: {
+                elements: {
+                    line: {
+                        borderWidth: 3 // 线条宽度
+                    }
+                },
+                scale: {
+                    ticks: {
+                        beginAtZero: true, // 从零开始
+                        max: 10 // 最大值
+                    }
+                },
+                legend: {
+                    position: 'top' // 图例位置
+                },
+                tooltips: {
+                    mode: 'index', // 工具提示显示模式
+                    intersect: false
+                },
+                responsive: true, // 响应式调整
+                maintainAspectRatio: false // 维持宽高比
+            }
+        });
+    }
+
+
+</script>
+</body>
+</html>

@@ -4,8 +4,12 @@ import time
 from flask import (Flask, redirect, render_template, request, jsonify,
                    send_from_directory, url_for)
 from azure.cosmos import CosmosClient
-import redis
 
+import redis
+from flask import request, jsonify
+from flask import Flask, render_template
+from popular_words import popular
+from categor_city import classify_cities
 # password is the "Primary" copied in "Access keys"
 redis_passwd = "Bc1iRDDtiHjPDzGijIuzJ3Aidg2is3zHJAzCaM8NWPo="
 # "Host name" in properties
@@ -48,6 +52,62 @@ def index():
 def index1():
     return render_template('index1.html')
 
+@app.route('/cluster', methods=['GET'])
+def knn_reviews():
+    classes = int(request.args.get('classes'))
+    k = int(request.args.get('k'))
+    words = int(request.args.get('words'))
+    cache_key = f"class_k_words:{classes}:{k}:{words}"
+    cached_data = cache.get(cache_key)
+    start_time = time.time()
+    if cached_data:
+        result = json.loads(cached_data)
+        IsRedis = True
+    else:
+        total = 5393
+        classify_cities_dict, central_city_dict = classify_cities(total_cities=total, classes=classes, k=k,
+                                                                  words_number=words)
+        category_words_counts, category_scores = popular(words, classify_cities_dict)
+        # clusters_dict = {key: len(value) for key, value in classify_cities_dict.items()}
+        # 正确提取每个类别的第一个键
+        # first_keys = [list(cls.keys())[0] for cls in category_words_counts.values()]
+        category_keywords = {}
+        used_keywords = set()
+
+        for category, words_counts in category_words_counts.items():
+            sorted_words = sorted(words_counts, key=words_counts.get, reverse=True)
+            for word in sorted_words:
+                if word not in used_keywords:
+                    category_keywords[category] = word
+                    used_keywords.add(word)
+                    break
+        category_keywords_freq = {word: category_words_counts[category][word]
+                                  for category, word in category_keywords.items()}
+
+        total_counts_for_keywords = {keyword: 0 for keyword in category_keywords.values()}
+
+        for category in category_words_counts.values():
+            for keyword, count in category.items():
+                if keyword in total_counts_for_keywords:
+                    total_counts_for_keywords[keyword] += count
+
+        print(category_keywords_freq)
+        result = {
+            'clusters': classify_cities_dict,
+            'scores': category_scores,
+            'centers': central_city_dict,
+            'words': category_keywords_freq,
+            'avg_words': total_counts_for_keywords
+        }
+        cache.setex(cache_key, 86400 * 5, json.dumps(result))  # 3600 seconds = 1 hour
+        IsRedis = False
+    result['IsRedis'] = IsRedis
+    end = time.time()
+    response_time = (end - start_time)*1000
+    result['response_time'] = response_time
+    # return jsonify(class_info=classify_cities_dict, center_city=central_city_dict, word_data=category_words_counts,
+    #                score = category_scores)
+    return jsonify(result)
 
 @app.route('/query', methods=['POST'])
 def query_distances():
