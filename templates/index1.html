@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>City Distance Query</title>
+    <!-- 引入 Chart.js 或其他所需的库 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <form id="query-form" method="post">
+        <input type="text" name="city" placeholder="City Name" required>
+        <input type="text" name="state" placeholder="State Name" required>
+        <input type="hidden" name="page" id="current-page0" value="1">
+        <button type="submit">Submit Bar chart</button>
+    </form>
+
+    <div id="chart-containerq10">
+        <!-- Bar chart will be rendered here -->
+        <canvas id="chartq10"></canvas>
+    </div>
+
+    <button id="prev-page" onclick="changePage10(-1)">Previous Page</button>
+    <button id="next-page" onclick="changePage10(1)">Next Page</button>
+
+    <div id="current-page-displayq10">Current Page: <span id="display-pageq10">1</span></div>
+    <div id="redisq0"></div>
+    <div id="response-timeq10"></div>
+
+
+    <script>
+    document.getElementById('query-form').addEventListener('submit', function(event) {
+        event.preventDefault();
+        fetchData();
+    });
+
+    function fetchData() {
+        const formData = {
+            city: document.querySelector('input[name="city"]').value,
+            state: document.querySelector('input[name="state"]').value,
+            page: document.getElementById('current-page0').value
+        };
+
+        fetch('/query', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            updateChart10(data.distances);
+            document.getElementById('response-timeq10').textContent = 'Response time: ' + data.response_time + ' ms';
+            document.getElementById('display-pageq10').textContent = formData.page;
+            document.getElementById('redisq0').textContent = 'Using Redis: ' + data.IsRedis;
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    function changePage10(delta) {
+        var currentPage = parseInt(document.getElementById('current-page0').value);
+        var newPage = currentPage + delta;
+        newPage = Math.max(newPage, 1); // 确保页码不小于1
+        document.getElementById('current-page0').value = newPage;
+        fetchData();
+    }
+
+    function updateChart10(data) {
+        const ctx = document.getElementById('chartq10').getContext('2d');
+        if (window.barChart) window.barChart.destroy(); // 销毁旧的图表
+        window.barChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(item => `${item.city}, ${item.state}`),
+                datasets: [{
+                    label: 'Distance',
+                    data: data.map(item => item['Eular distance']),
+                    backgroundColor: 'rgba(0, 123, 255, 0.5)',
+                    borderColor: 'rgba(0, 123, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    </script>
+
+
+
+
+
+
+
+
+    <form id="query-form1" method="post">
+        <input type="text" name="city1" placeholder="City Name" required>
+        <input type="text" name="state1" placeholder="State Name" required>
+        <input type="hidden" name="page" id="current-pageq11" value="1">
+        <button type="submit">Submit Line chart</button>
+    </form>
+
+    <div id="chart-containerq11">
+        <!-- Bar chart will be rendered here -->
+        <canvas id="chart-q11"></canvas>
+    </div>
+
+    <button id="prev-page" onclick="changePage11(-1)">Previous Page</button>
+    <button id="next-page" onclick="changePage11(1)">Next Page</button>
+
+    <div id="current-page-display">Current Page: <span id="display-page1">1</span></div>
+    <div id="response-timeq11"></div>
+    <div id="redisq11"></div>
+
+
+    <script>
+    document.getElementById('query-form1').addEventListener('submit', function(event) {
+        event.preventDefault();
+        fetchData1();
+    });
+
+    function fetchData1() {
+        const formData = {
+            city: document.querySelector('input[name="city1"]').value,
+            state: document.querySelector('input[name="state1"]').value,
+            page: document.getElementById('current-pageq11').value
+        };
+
+        fetch('/line_score', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            updateChart11(data.distances);
+            document.getElementById('response-timeq11').textContent = 'Response time: ' + data.response_time + ' ms';
+            document.getElementById('display-page1').textContent = formData.page;
+            document.getElementById('redisq11').textContent = 'Using Redis: ' + data.IsRedis;
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    function changePage11(delta) {
+        var currentPage = parseInt(document.getElementById('current-pageq11').value);
+        var newPage = currentPage + delta;
+        newPage = Math.max(newPage, 1); // 确保页码不小于1
+        document.getElementById('current-pageq11').value = newPage;
+        fetchData1();
+    }
+
+    function updateChart11(data) {
+        const ctx = document.getElementById('chart-q11').getContext('2d');
+        if (window.lineChart ) window.lineChart .destroy(); // 销毁旧的图表
+        window.lineChart  = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(item => `${item.city}`),
+                datasets: [{
+                    label: 'score_average',
+                    data: data.map(item => item['score_average']),
+                    borderColor: 'rgb(75, 192, 192)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    </script>
+</body>
+</html>

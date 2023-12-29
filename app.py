@@ -31,47 +31,44 @@ def purge_cache():
 
 app = Flask(__name__)
 # 定义连接字符串和数据库信息
-connection_string = "AccountEndpoint=https://tutorial-uta-cse6332.documents.azure.com:443/;AccountKey=fSDt8pk5P1EH0NlvfiolgZF332ILOkKhMdLY6iMS2yjVqdpWx4XtnVgBoJBCBaHA8PIHnAbFY4N9ACDbMdwaEw==;"
-database_name = "tutorial"
-container_name_cities = "us_cities"
-container_name_reviews = "reviews"
-
-# 初始化Cosmos DB客户端
-client = CosmosClient.from_connection_string(connection_string)
-
-# 获取对数据库的引用
-database = client.get_database_client(database_name)
-
-# 获取对容器（表）的引用
-container_cities = database.get_container_client(container_name_cities)
-# container_reviews = database.get_container_client(container_name_reviews)
+ENDPOINT = 'https://tutorial-uta-cse6332.documents.azure.com:443/'
+KEY = 'fSDt8pk5P1EH0NlvfiolgZF332ILOkKhMdLY6iMS2yjVqdpWx4XtnVgBoJBCBaHA8PIHnAbFY4N9ACDbMdwaEw=='
+client = CosmosClient(url=ENDPOINT, credential=KEY)
+database = client.get_database_client('tutorial')
+reviews = database.get_container_client('reviews')
+cities = database.get_container_client('us_cities')
 
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('chart.html')
 
 
-@app.route('/data/closest_cities', methods=['GET'])
-def closest_cities():
-    start_time = time.time()
-    city = request.args.get('city', '')
-    page = int(request.args.get('page', ''))
-    page_size = int(request.args.get('page_size', ''))
+@app.route('/index1')
+def index1():
+    return render_template('index1.html')
 
-    # Generate a unique key for caching
-    cache_key = f"closest_cities:{city}:{page}:{page_size}"
+
+@app.route('/query', methods=['POST'])
+def query_distances():
+    start_time = time.time()  # 开始计时
+    data = request.json
+    print(data)
+    city = data['city']
+    state = data['state']
+    page = int(data['page'])
+    cache_key = f"closest_cities:{city}:{state}"
 
     # Try to get cached data
     cached_data = cache.get(cache_key)
     if cached_data:
-        # Data is in cache
-        current_page_records = json.loads(cached_data)
-        from_cache = True
+        sorted_result = json.loads(cached_data)
+        distances = get_sorted_distances10(sorted_result, page)
+        IsRedis = True
     else:
-        query = "SELECT c.lat, c.lng FROM c WHERE c.city = @city"
-        params = [dict(name="@city", value=city)]
-        result1 = list(container_cities.query_items(
+        query = "SELECT c.lat, c.lng FROM cities c WHERE c.city = @city and c.state = @state"
+        params = [dict(name="@city", value=city), dict(name="@state", value=state)]
+        result1 = list(cities.query_items(
             query=query,
             parameters=params,
             enable_cross_partition_query=True
@@ -80,32 +77,116 @@ def closest_cities():
         lat = float(tmp['lat'])
         lng = float(tmp['lng'])
         result = []
-        query = "SELECT * FROM c"
-        items = container_cities.query_items(query, enable_cross_partition_query=True)
+        query = "SELECT * FROM cities"
+        items = cities.query_items(query, enable_cross_partition_query=True)
         for item in items:
             citys = {}
             citys['city'] = item['city']
+            citys['state'] = item['state']
             citys['lat'] = item['lat']
             citys['lng'] = item['lng']
             citys['Eular distance'] = sqrt((float(item['lat']) - lat) ** 2 + (float(item['lng']) - lng) ** 2)
             result.append(citys)
-
         sorted_result = sorted(result, key=lambda x: x['Eular distance'])
-        # 计算当前页的起始和结束索引
-        start_index = (page - 1) * page_size
-        end_index = start_index + page_size
-
-        # 提取当前页的记录
-        current_page_records = sorted_result[start_index:end_index]
+        distances = get_sorted_distances10(sorted_result, page)
         # Cache the data
-        cache.setex(cache_key, 3600, json.dumps(current_page_records))  # 3600 seconds = 1 hour
-        from_cache = False
-    end_time = time.time()  # 记录程序结束运行的时间
-    elapsed_time = (end_time - start_time) * 1000  # 计算运行时间并转换为毫秒
-    current_page_records.append({'the time of computing the response': f'{elapsed_time:.3f}'+'ms'})
-    current_page_records.append({'the time of computing the response': f'{from_cache}'})
-    print(current_page_records)
-    return jsonify(current_page_records)
+        cache.setex(cache_key, 86400*5, json.dumps(sorted_result))  # 3600 seconds = 1 hour
+        IsRedis = False
+    response_time = (time.time() - start_time) * 1000  # 计算响应时间
+
+    return jsonify({
+        'distances': distances,
+        'response_time': response_time,
+        'IsRedis': IsRedis,
+    })
+
+
+def get_sorted_distances10(result, page):
+    per_page = 50
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page
+
+    return result[start_index:end_index]
+
+
+@app.route('/line_score', methods=['POST'])
+def line_score():
+    start_time = time.time()  # 开始计时
+    data = request.json
+    # print(data)
+    city = data['city']
+    state = data['state']
+    page = int(data['page'])
+    cache_key = f"closest_cities:{city}:{state}:score"
+
+    # Try to get cached data
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        sorted_result = json.loads(cached_data)
+        distances = get_sorted_distances11(sorted_result, page)
+        IsRedis = True
+
+    else:
+        query = "SELECT c.lat, c.lng FROM cities c WHERE c.city = @city and c.state = @state"
+        params = [dict(name="@city", value=city), dict(name="@state", value=state)]
+        result1 = list(cities.query_items(
+            query=query,
+            parameters=params,
+            enable_cross_partition_query=True
+        ))
+        tmp = result1[0]
+        lat = float(tmp['lat'])
+        lng = float(tmp['lng'])
+        result = []
+        query = "SELECT * FROM cities"
+        items = cities.query_items(query, enable_cross_partition_query=True)
+        for item in items:
+            citys = {}
+            citys['city'] = item['city']
+            citys['state'] = item['state']
+            citys['lat'] = item['lat']
+            citys['lng'] = item['lng']
+            citys['Eular distance'] = sqrt((float(item['lat']) - lat) ** 2 + (float(item['lng']) - lng) ** 2)
+            result.append(citys)
+        sorted_result = sorted(result, key=lambda x: x['Eular distance'])
+        for item in sorted_result:
+            cit = item['city']
+            # print(cit)
+            query = "SELECT * FROM reviews c WHERE c.city = @cit "
+            params = [dict(name="@cit", value=cit)]
+            itemss = list(reviews.query_items(
+                query=query,
+                parameters=params,
+                enable_cross_partition_query=True
+            ))
+            score_sum = sum(float(item1['score']) for item1 in itemss)
+            print(score_sum)
+            print(len(itemss))
+            if len(itemss) == 0:
+                item['score_average'] = 0
+            else:
+                score_average = score_sum / len(itemss)
+                item['score_average'] = score_average
+                print(score_average)
+        distances = get_sorted_distances11(sorted_result, page)
+        # Cache the data
+        cache.setex(cache_key, 3600*24*5, json.dumps(sorted_result))  # 3600 seconds = 1 hour
+        IsRedis = False
+    response_time = (time.time() - start_time) * 1000  # 计算响应时间
+    print(distances)
+    return jsonify({
+        'distances': distances,
+        'response_time': response_time,
+        'IsRedis': IsRedis,
+    })
+
+
+def get_sorted_distances11(result, page):
+    per_page = 10
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page
+
+    return result[start_index:end_index]
 
 
 @app.route('/purge_cache', methods=['POST'])
@@ -115,4 +196,4 @@ def handle_purge_cache():
 
 
 if __name__ == '__main__':
-   app.run(debug=True, host="127.0.0.1", port=8080)
+   app.run(debug=True)
