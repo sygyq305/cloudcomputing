@@ -52,6 +52,11 @@ def index():
 def index1():
     return render_template('index1.html')
 
+
+@app.route('/ass4')
+def index1():
+    return render_template('ass4.html')
+
 @app.route('/cluster', methods=['GET'])
 def knn_reviews():
     classes = int(request.args.get('classes'))
