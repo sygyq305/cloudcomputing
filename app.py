@@ -54,7 +54,7 @@ def index1():
 
 
 @app.route('/ass4')
-def index1():
+def index2():
     return render_template('ass4.html')
 
 @app.route('/cluster', methods=['GET'])
